@@ -1,0 +1,96 @@
+private void run( String[] args ) throws IOException, ParseException {
+
+        LOGGER.info( "args: {}" , ( args != null ? args.length : null ) );
+
+
+        // Calculate the start time for the email status.
+        startDateTime = calculateStartTime( hours, time );
+        LocalDateTime endDateTime = LocalDateTime.now();
+
+
+        StringBuilder msg  = new StringBuilder();
+
+
+
+//        HashMap conatianing a list of jobs and jobid in order of their schedule time
+
+        LinkedHashMap<String,Integer> scheduleBatchJobs = dao.getIcmBatchJobsSchedule(startDateTime,endDateTime);
+
+//        Iterating over the hashMap and checking each job id
+
+        for(Map.Entry<String,Integer> entry : scheduleBatchJobs.entrySet()) {
+
+            LOGGER.info("The Key of Batch Schedule Map : {}", entry.getKey());
+            LOGGER.info("The Value of Batch Schedule Map : {}", entry.getValue());
+
+
+            int icmJobId = entry.getValue();
+            IcmJob job = dao.getIcmJob(icmJobId);
+
+           int jobOccurence =getJobOccurence(scheduleBatchJobs,icmJobId);
+
+            LOGGER.info("The Occurence of job {}  is : {} ", icmJobId, jobOccurence);
+
+//            Retrieving the Value of the parameters from mapKey
+            String mapKey = entry.getKey();
+            String[] arrayOfString = mapKey.split("#");
+            String scheduleDay = arrayOfString[0];
+            int scheduleTime = Integer.parseInt(arrayOfString[2]);
+
+//            checking the occasional jobs
+            String occasionalJobStatus = getOccasionalJobStatus(job, scheduleDay, scheduleTime);
+
+            if (occasionalJobStatus.equalsIgnoreCase("Yes")) {
+                continue;
+            }
+
+            if (jobOccurence == 1){
+//        Checking whether the job is completed or not for the duration with the icmjobid
+                List<IcmJobHistory> jobCompleted = dao.getIcmCompletedJob(startDateTime, endDateTime, icmJobId);
+
+            if (jobCompleted != null && !(jobCompleted.isEmpty())) {
+                LOGGER.info("ICM job Completed with ICM job id : {}", icmJobId);
+                msg.append(formatRecords(jobCompleted, true));
+                continue;
+            }
+//            checking InProgress job
+            IcmJobHistory jobInProgress = dao.getIcmInprogressJob(icmJobId);
+            if (jobInProgress != null) {
+                LOGGER.info("InProgress job in ICM with ICM job id : {}", icmJobId);
+                msg.append(formatRecords(jobInProgress, false));
+                isBatchCompleted = false;
+                continue;
+
+                }
+
+        }
+            if(jobOccurence >1){
+
+                //    Checking whether the job is completed or not for the duration with the icmjobid
+                List<IcmJobHistory> jobCompleted = dao.getIcmCompletedJobScheduledMorethanOnce(startDateTime, endDateTime, icmJobId,mapKey,jobOccurence);
+                if (jobCompleted != null && !(jobCompleted.isEmpty())) {
+                    LOGGER.info("ICM job Completed with ICM job id : {}" , icmJobId);
+                    msg.append(formatRecords(jobCompleted, true));
+                    continue;
+
+                }
+
+                IcmJobHistory jobInProgress = dao.getIcmInprogressJobScheduledMorethanOnce(startDateTime, endDateTime, icmJobId,mapKey,jobOccurence);
+
+                if (jobInProgress != null) {
+                    LOGGER.info("InProgress job in ICM with ICM job id : {}", icmJobId);
+                    msg.append(formatRecords(jobInProgress, false));
+                    isBatchCompleted = false;
+                    continue;
+
+                }
+
+            }
+            if(job != null){
+                LOGGER.info("Jobs that are not yet executed  : {}" ,job.getName());
+                msg.append(diaplayNotRunJob(job));
+            }
+
+        }
+        
+    }
